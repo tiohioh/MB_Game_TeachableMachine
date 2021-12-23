@@ -1,0 +1,200 @@
+<div>Teachable Machine Image Model</div>
+<canvas height="196" width="196" id="board" style="background-color:#F00;"></canvas>
+<canvas height="200px" width="200px" id="webcam" style="border:solid;background-color:#BBB;"></canvas>
+<!--<button type="button" onclick="this.style.display='none';init()">Start</button>-->
+<div id="cells"></div>
+<div id="webcam-container"></div>
+<div id="label-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script type="text/javascript">
+    // More API functions here:
+    // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
+
+    // the link to your model provided by Teachable Machine export panel
+    //const rootURL = "http://alumina.starfree.jp/marubatsu_game/model/";
+	//const rootURL = "https://teachablemachine.withgoogle.com/models/dyP-cmH0Q/";
+	//const rootURL = "https://teachablemachine.withgoogle.com/models/lyMxOdYlX/";
+	//const rootURL = "https://teachablemachine.withgoogle.com/models/k6yPK_mB4/";
+	const rootURL = "https://teachablemachine.withgoogle.com/models/Wld9c3If_/";
+	
+	const can = document.getElementById("board");
+	const ctx = can.getContext("2d");
+	ctx.fillStyle = "#FFF";
+	ctx.fillRect(0,0,can.width,can.height);
+	ctx.strokeStyle = "#000";
+	ctx.lineCap = "round"; 
+	ctx.lineWidth = "2px";
+	
+	let cell = [];
+	cell[0] = [];
+	cell[1] = [];
+	cell[2] = [];
+	
+	nowCell = 0;
+	
+	var mouse_on = false;
+	var write_auth = true;
+	
+	can.addEventListener('mousedown',(e) => onMouseDown([e.layerX,e.layerY]), false);
+	can.addEventListener('mouseup',(e) => onMouseUp([e.layerX,e.layerY]), false);
+	can.addEventListener('mousemove',(e) => onMouseMove([e.layerX,e.layerY]), false);
+	can.addEventListener('touchstart',(e) => {console.log(e);}, false);
+	can.addEventListener('touchend',(e) => {console.log(e);}, false);
+	can.addEventListener('touchmove',(e) => {console.log(e);}, false);
+	
+	
+	strokeLine();
+	strokeLine();
+	
+	function strokeLine (){
+		//horizontial
+		for(let i = 0;i < 2;++i){
+			ctx.beginPath();
+			ctx.moveTo(0,i*66+64);
+			ctx.lineTo(196,i*66+64);
+			ctx.stroke();
+		}
+		//vertical
+		for(let i = 0;i < 2;++i){
+			ctx.beginPath();
+			ctx.moveTo(i*66+64,0);
+			ctx.lineTo(i*66+64,196);
+			ctx.stroke();
+		}
+	}
+	function onMouseDown (e){
+		if(write_auth){
+			mouse_on = true;
+			const x = e[0];
+			const y = e[1];
+			ctx.beginPath();
+			ctx.moveTo(x, y);
+		}
+	}
+	function onMouseUp (e){
+		if(write_auth){
+			mouse_on = false;
+			const x = e[0];
+			const y = e[1];
+			ctx.lineTo(x, y);
+			ctx.stroke();
+			strokeLine();
+			loop();
+		}
+	}
+	function onMouseMove (e){
+		if(mouse_on && write_auth){
+			const x = e[0];
+			const y = e[1];
+			ctx.lineTo(x, y);
+			ctx.stroke();
+		}
+	}
+
+    let model, webcam, labelContainer, maxPredictions;//webcam不要
+	
+	async function mk(){
+		await loop();
+	}
+
+    async function init() {
+        const modelURL = rootURL + "model.json";
+        const metadataURL = rootURL + "metadata.json";
+
+        model = await tmImage.load(modelURL, metadataURL);
+        maxPredictions = model.getTotalClasses();
+		
+        labelContainer = document.getElementById("label-container");
+        for (let i = 0; i < maxPredictions; i++) { // and class labels
+            labelContainer.appendChild(document.createElement("div"));
+        }
+		loop();
+    }
+
+	async function loop() {
+		//webcam.update();
+		nowCell = nowCell >= 8 ? 0 : ++nowCell;
+		const x = Math.floor(nowCell / 3);
+		const y = nowCell % 3;
+		const x_from = x * 66;
+		const x_to = x * 66 + 64
+		const y_from = y *66;
+		const y_to = y * 66 + 64;
+		
+		const img = ctx.getImageData(x_from,y_from,x_to,x_to);
+		const read_img = document.getElementById("webcam");
+		const rctx = read_img.getContext("2d");
+		rctx.fillStyle = "#FFF";
+		rctx.fillRect(0,0,read_img.width,read_img.height);
+		rctx.putImageData(img,0,0,0,0,63,63);
+		rctx.scale(3.17,3.17);
+		
+		const predict = await (async () => {
+			return await model.predict(read_img);
+		})();
+		
+		cell[y][x] = +function (e){//return maximam value class
+			let max = new Object();
+			max.int = 0;
+			//console.log(e[0].className,e[0].probability.toFixed(2),e[1].className,e[1].probability.toFixed(2),e[2].className,e[2].probability.toFixed(2));
+			for(i of e){
+				if(max.int < i.probability.toFixed(2)){
+					max.int = i.probability.toFixed(2);
+					max.name = i.className;
+				}
+			}
+			let tnf = max.name == "T" ? 1 :
+			max.name == "F" ? -1 :
+			0;
+			return tnf;
+		}(predict);
+		
+		
+		let adder = {};
+		
+		adder = cell[0][0] + cell[0][1] + cell[0][2] == 3 ? {lx_from: 0, lx_to: 196, ly_from: 32, ly_to: 32, winner: 1} : adder;
+		adder = cell[0][0] + cell[0][1] + cell[0][2] == -3 ? {lx_from: 0, lx_to: 196, ly_from: 32, ly_to: 32, winner: -1} : adder;
+		adder = cell[1][0] + cell[1][1] + cell[1][2] == 3 ? {lx_from: 0, lx_to: 196, ly_from: 98, ly_to: 98, winner: 1} : adder;
+		adder = cell[1][0] + cell[1][1] + cell[1][2] == -3 ? {lx_from: 0, lx_to: 196, ly_from: 98, ly_to: 98, winner: -1} : adder;
+		adder = cell[2][0] + cell[2][1] + cell[2][2] == 3 ? {lx_from: 0, lx_to: 196, ly_from: 164, ly_to: 164, winner: 1} : adder;
+		adder = cell[2][0] + cell[2][1] + cell[2][2] == -3 ? {lx_from: 0, lx_to: 196, ly_from: 164, ly_to: 164, winner: -1} : adder;
+		
+		adder = cell[0][0] + cell[1][0] + cell[2][0] == 3 ? {lx_from: 32, lx_to: 32, ly_from: 0, ly_to: 196, winner: 1} : adder;
+		adder = cell[0][0] + cell[1][0] + cell[2][0] == -3 ? {lx_from: 32, lx_to: 32, ly_from: 0, ly_to: 196, winner: -1} : adder;
+		adder = cell[0][1] + cell[1][1] + cell[2][1] == 3 ? {lx_from: 98, lx_to: 98, ly_from: 0, ly_to: 196, winner: 1} : adder;
+		adder = cell[0][1] + cell[1][1] + cell[2][1] == -3 ? {lx_from: 98, lx_to: 98, ly_from: 0, ly_to: 196, winner: -1} : adder;
+		adder = cell[0][2] + cell[1][2] + cell[2][2] == 3 ? {lx_from: 164, lx_to: 164, ly_from: 0, ly_to: 196, winner: 1} : adder;
+		adder = cell[0][2] + cell[1][2] + cell[2][2] == -3 ? {lx_from: 164, lx_to: 164, ly_from: 0, ly_to: 196, winner: -1} : adder;
+		
+		adder = cell[0][0] + cell[1][1] + cell[2][2] == 3 ? {lx_from: 0, lx_to: 196, ly_from: 0, ly_to: 196, winner: 1} : adder;
+		adder = cell[0][0] + cell[1][1] + cell[2][2] == -3 ? {lx_from: 0, lx_to: 196, ly_from: 0, ly_to: 196, winner: -1} : adder;
+		adder = cell[0][2] + cell[1][1] + cell[2][0] == 3 ? {lx_from: 0, lx_to: 196, ly_from: 196, ly_to: 0, winner: 1} : adder;
+		adder = cell[0][2] + cell[1][1] + cell[2][0] == -3 ? {lx_from: 0, lx_to: 196, ly_from: 196, ly_to: 0, winner: -1} : adder;
+		
+		console.log(adder);
+		
+		if(adder.winner){
+			adder = adder.winner == 1 ? {...adder, color: "#FF0000"} : adder;
+			adder = adder.winner == -1 ? {...adder, color: "#0000FF"} : adder;
+			ctx.beginPath() ;
+			ctx.moveTo(adder.lx_from,adder.ly_from);
+			ctx.lineTo(adder.lx_to,adder.ly_to);
+			ctx.strokeStyle = adder.color
+			ctx.lineWidth = 4;
+			ctx.stroke();
+			
+			write_auth = false;
+			
+			ctx.strokeStyle = "#000";
+			ctx.lineWidth = 2;
+		}
+		
+		
+		
+		document.getElementById("cells").innerHTML = cell.join("<br/>");
+		if(nowCell !== 0) window.requestAnimationFrame(loop);
+	}
+	init();
+    
+</script>
